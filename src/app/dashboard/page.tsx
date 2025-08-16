@@ -59,7 +59,7 @@ export default function Dashboard() {
 
     const q = query(
       collection(db, 'gasStations'),
-      orderBy('createdAt', 'desc')
+      orderBy('updatedAt', 'desc')
     );
 
     const unsubscribe = onSnapshot(q, 
