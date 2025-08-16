@@ -1,205 +1,357 @@
-// src/app/gas-stations/[id]/page.tsx
-"use client";
+'use client';
 
-import ProtectedRoute from "@/components/ProtectedRoute";
-import { useParams, useRouter } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
-import { db } from "@/firebase/config";
-import { GeoPoint, Timestamp, deleteDoc, doc, getDoc, updateDoc } from "firebase/firestore";
+import { useState, useEffect } from 'react';
+import { useRouter, useParams } from 'next/navigation';
+import { doc, getDoc } from 'firebase/firestore';
+import { onAuthStateChanged, User } from 'firebase/auth';
+import { auth, db } from '@/lib/firebase'; // Adjust path as needed
 
-type Station = {
+interface GasStation {
   id: string;
   name: string;
-  brand?: string;
-  city?: string;
-  address?: string;
-  fuelTypes?: string[];
-  location?: { latitude: number; longitude: number };
-  updatedAt?: Timestamp;
-};
+  address: string;
+  brand: string;
+  city: string;
+  fuelTypes: string[];
+  hasShop: boolean;
+  location: {
+    latitude: number;
+    longitude: number;
+  };
+  openHours: string;
+  prices: Record<string, number>;
+  services: string[];
+  updatedAt: any;
+}
 
 export default function GasStationDetailPage() {
-  const params = useParams();
-  const router = useRouter();
-  const id = useMemo(() => (Array.isArray(params.id) ? params.id[0] : params.id), [params.id]);
-
-  const [station, setStation] = useState<Station | null>(null);
-  const [form, setForm] = useState<Station | null>(null);
-  const [edit, setEdit] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [user, setUser] = useState<User | null>(null);
+  const [station, setStation] = useState<GasStation | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const router = useRouter();
+  const params = useParams();
+  const stationId = params?.id as string;
 
+  // Authentication state listener
   useEffect(() => {
-    if (!id) return;
-    const run = async () => {
-      setLoading(true);
-      const ref = doc(db, "gasStations", id);
-      const snap = await getDoc(ref);
-      if (snap.exists()) {
-        const data = { id: snap.id, ...(snap.data() as any) } as Station;
-        setStation(data);
-        setForm(data);
+    console.log('Setting up auth state listener...');
+    
+    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+      console.log('Auth state changed:', currentUser ? 'User logged in' : 'No user');
+      
+      if (currentUser) {
+        setUser(currentUser);
       } else {
-        setStation(null);
+        console.log('No user found, redirecting to login');
+        router.push('/login');
       }
-      setLoading(false);
+    });
+
+    return () => {
+      console.log('Cleaning up auth listener');
+      unsubscribe();
     };
-    run();
-  }, [id]);
+  }, [router]);
 
-  const set = <K extends keyof Station>(key: K, val: Station[K]) =>
-    setForm((prev) => (prev ? { ...prev, [key]: val } : prev));
+  // Fetch station data
+  useEffect(() => {
+    if (!user || !stationId) return;
 
-  const handleSave = async () => {
-    if (!id || !form) return;
-    const ref = doc(db, "gasStations", id);
-    // normalize types
-    const lat = Number(form.location?.latitude ?? "");
-    const lng = Number(form.location?.longitude ?? "");
-    const payload: any = {
-      name: form.name?.trim() || "",
-      brand: form.brand || "",
-      city: form.city || "",
-      address: form.address || "",
-      fuelTypes: (form.fuelTypes || []).map((f) => f.trim()).filter(Boolean),
-      // store as GeoPoint; keep a plain copy too if you prefer
-      location: new GeoPoint(isFinite(lat) ? lat : 0, isFinite(lng) ? lng : 0),
-      updatedAt: Timestamp.now(),
-    };
-    await updateDoc(ref, payload);
-    setEdit(false);
-    // refresh view
-    const snap = await getDoc(ref);
-    setStation({ id, ...(snap.data() as any) });
-    setForm({ id, ...(snap.data() as any) });
-    alert("Saved");
-  };
+    console.log('Fetching station data for ID:', stationId);
 
-  const handleDelete = async () => {
-    if (!id) return;
-    await deleteDoc(doc(db, "gasStations", id));
-    alert("Deleted");
-    router.push("/gas-stations");
-  };
+    const fetchStation = async () => {
+      try {
+        const docRef = doc(db, 'gasStations', stationId);
+        const docSnap = await getDoc(docRef);
 
-  if (loading) return <p>Loading...</p>;
-  if (!station) return <p style={{ color: "red" }}>Station not found</p>;
-
-  // derive string values for inputs
-  const latVal = String((form?.location as any)?.latitude ?? (form?.location as any)?._latitude ?? "");
-  const lngVal = String((form?.location as any)?.longitude ?? (form?.location as any)?._longitude ?? "");
-
-  return (
-    <ProtectedRoute>
-      <div className="p-6 max-w-xl">
-        <h1 className="text-2xl font-bold mb-4">
-          {edit ? "Edit Gas Station" : station.name}
-        </h1>
-
-        <div className="flex flex-col gap-3">
-          <label className="flex flex-col">
-            <span className="text-sm mb-1">Name</span>
-            <input
-              className="border p-2 rounded"
-              value={form?.name || ""}
-              disabled={!edit}
-              onChange={(e) => set("name", e.target.value)}
-            />
-          </label>
-
-          <label className="flex flex-col">
-            <span className="text-sm mb-1">Brand</span>
-            <input
-              className="border p-2 rounded"
-              value={form?.brand || ""}
-              disabled={!edit}
-              onChange={(e) => set("brand", e.target.value)}
-            />
-          </label>
-
-          <label className="flex flex-col">
-            <span className="text-sm mb-1">City</span>
-            <input
-              className="border p-2 rounded"
-              value={form?.city || ""}
-              disabled={!edit}
-              onChange={(e) => set("city", e.target.value)}
-            />
-          </label>
-
-          <label className="flex flex-col">
-            <span className="text-sm mb-1">Address</span>
-            <input
-              className="border p-2 rounded"
-              value={form?.address || ""}
-              disabled={!edit}
-              onChange={(e) => set("address", e.target.value)}
-            />
-          </label>
-
-          <label className="flex flex-col">
-            <span className="text-sm mb-1">Fuel Types (comma separated)</span>
-            <input
-              className="border p-2 rounded"
-              value={(form?.fuelTypes || []).join(", ")}
-              disabled={!edit}
-              onChange={(e) =>
-                set("fuelTypes", e.target.value.split(",").map((s) => s.trim()))
+        if (docSnap.exists()) {
+          const data = docSnap.data();
+          
+          // Filter out undefined values from prices
+          const cleanPrices: Record<string, number> = {};
+          if (data.prices && typeof data.prices === 'object') {
+            Object.entries(data.prices).forEach(([key, value]) => {
+              if (typeof value === 'number') {
+                cleanPrices[key] = value;
               }
-            />
-          </label>
+            });
+          }
 
-          <div className="grid grid-cols-2 gap-3">
-            <label className="flex flex-col">
-              <span className="text-sm mb-1">Latitude</span>
-              <input
-                className="border p-2 rounded"
-                value={latVal}
-                disabled={!edit}
-                onChange={(e) =>
-                  set("location", {
-                    latitude: Number(e.target.value),
-                    longitude: Number(lngVal),
-                  } as any)
-                }
-              />
-            </label>
-            <label className="flex flex-col">
-              <span className="text-sm mb-1">Longitude</span>
-              <input
-                className="border p-2 rounded"
-                value={lngVal}
-                disabled={!edit}
-                onChange={(e) =>
-                  set("location", {
-                    latitude: Number(latVal),
-                    longitude: Number(e.target.value),
-                  } as any)
-                }
-              />
-            </label>
-          </div>
+          const stationData: GasStation = {
+            id: docSnap.id,
+            name: data.name || 'Unknown Station',
+            address: data.address || 'No address',
+            brand: data.brand || 'Unknown Brand',
+            city: data.city || 'Unknown City',
+            fuelTypes: data.fuelTypes || [],
+            hasShop: data.hasShop || false,
+            location: data.location || { latitude: 0, longitude: 0 },
+            openHours: data.openHours || '24/7',
+            prices: cleanPrices,
+            services: data.services || [],
+            updatedAt: data.updatedAt
+          };
+
+          setStation(stationData);
+          console.log('Station data loaded:', stationData);
+        } else {
+          setError('Gas station not found');
+          console.log('No such document!');
+        }
+      } catch (error) {
+        console.error('Error fetching station:', error);
+        setError('Error loading gas station data');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchStation();
+  }, [user, stationId]);
+
+  // Show loading spinner
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
+          <p className="mt-4 text-gray-600">Loading gas station details...</p>
         </div>
+      </div>
+    );
+  }
 
-        <div className="flex gap-3 mt-5">
-          {edit ? (
-            <>
-              <button className="bg-green-600 text-white px-4 py-2 rounded" onClick={handleSave}>
-                Save
-              </button>
-              <button className="bg-gray-300 px-4 py-2 rounded" onClick={() => { setForm(station); setEdit(false); }}>
-                Cancel
-              </button>
-            </>
-          ) : (
-            <button className="bg-blue-600 text-white px-4 py-2 rounded" onClick={() => setEdit(true)}>
-              Edit
-            </button>
-          )}
-          <button className="bg-red-600 text-white px-4 py-2 rounded" onClick={handleDelete}>
-            Delete
+  // Show error
+  if (error) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="text-center">
+          <p className="text-red-600 text-lg mb-4">{error}</p>
+          <button
+            onClick={() => router.push('/dashboard')}
+            className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md text-sm font-medium transition-colors"
+          >
+            Back to Dashboard
           </button>
         </div>
       </div>
-    </ProtectedRoute>
+    );
+  }
+
+  // Show login redirect if no user
+  if (!user) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="text-center">
+          <p className="text-gray-600">Redirecting to login...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Show station details
+  if (!station) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="text-center">
+          <p className="text-gray-600">Station not found</p>
+          <button
+            onClick={() => router.push('/dashboard')}
+            className="mt-4 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md text-sm font-medium transition-colors"
+          >
+            Back to Dashboard
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-gray-50">
+      {/* Header */}
+      <header className="bg-white shadow-sm border-b">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex justify-between items-center h-16">
+            <div className="flex items-center">
+              <button
+                onClick={() => router.push('/dashboard')}
+                className="mr-4 text-gray-400 hover:text-gray-600 transition-colors"
+              >
+                ← Back
+              </button>
+              <h1 className="text-xl font-semibold text-gray-900">
+                {station.name}
+              </h1>
+            </div>
+            <div className="flex items-center space-x-4">
+              <span className="text-sm text-gray-600">
+                Welcome, {user.email}
+              </span>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      {/* Main content */}
+      <main className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
+        <div className="px-4 py-6 sm:px-0">
+          <div className="bg-white overflow-hidden shadow rounded-lg">
+            <div className="px-4 py-5 sm:p-6">
+              {/* Station Header */}
+              <div className="mb-6">
+                <h2 className="text-2xl font-bold text-gray-900 mb-2">
+                  {station.name}
+                </h2>
+                <p className="text-lg text-gray-600">{station.brand}</p>
+              </div>
+
+              {/* Station Info Grid */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {/* Basic Information */}
+                <div>
+                  <h3 className="text-lg font-medium text-gray-900 mb-4">
+                    Basic Information
+                  </h3>
+                  <dl className="space-y-3">
+                    <div>
+                      <dt className="text-sm font-medium text-gray-500">Address</dt>
+                      <dd className="text-sm text-gray-900">{station.address}</dd>
+                    </div>
+                    <div>
+                      <dt className="text-sm font-medium text-gray-500">City</dt>
+                      <dd className="text-sm text-gray-900">{station.city}</dd>
+                    </div>
+                    <div>
+                      <dt className="text-sm font-medium text-gray-500">Open Hours</dt>
+                      <dd className="text-sm text-gray-900">{station.openHours}</dd>
+                    </div>
+                    <div>
+                      <dt className="text-sm font-medium text-gray-500">Has Shop</dt>
+                      <dd className="text-sm text-gray-900">
+                        {station.hasShop ? (
+                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                            Yes
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">
+                            No
+                          </span>
+                        )}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt className="text-sm font-medium text-gray-500">Location</dt>
+                      <dd className="text-sm text-gray-900">
+                        {station.location.latitude.toFixed(6)}, {station.location.longitude.toFixed(6)}
+                      </dd>
+                    </div>
+                  </dl>
+                </div>
+
+                {/* Prices */}
+                <div>
+                  <h3 className="text-lg font-medium text-gray-900 mb-4">
+                    Fuel Prices
+                  </h3>
+                  {Object.keys(station.prices).length > 0 ? (
+                    <div className="space-y-3">
+                      {Object.entries(station.prices).map(([fuel, price]) => (
+                        <div key={fuel} className="flex justify-between items-center">
+                          <span className="text-sm font-medium text-gray-700 capitalize">
+                            {fuel.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase())}
+                          </span>
+                          <span className="text-lg font-bold text-green-600">
+                            {price} MAD
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-sm text-gray-500">No prices available</p>
+                  )}
+                </div>
+              </div>
+
+              {/* Fuel Types */}
+              <div className="mt-6">
+                <h3 className="text-lg font-medium text-gray-900 mb-4">
+                  Available Fuel Types
+                </h3>
+                {station.fuelTypes.length > 0 ? (
+                  <div className="flex flex-wrap gap-2">
+                    {station.fuelTypes.map((fuel, index) => (
+                      <span
+                        key={index}
+                        className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800"
+                      >
+                        {fuel}
+                      </span>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-sm text-gray-500">No fuel types specified</p>
+                )}
+              </div>
+
+              {/* Services */}
+              <div className="mt-6">
+                <h3 className="text-lg font-medium text-gray-900 mb-4">
+                  Services
+                </h3>
+                {station.services.length > 0 ? (
+                  <div className="flex flex-wrap gap-2">
+                    {station.services.map((service, index) => (
+                      <span
+                        key={index}
+                        className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-purple-100 text-purple-800"
+                      >
+                        {service}
+                      </span>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-sm text-gray-500">No services specified</p>
+                )}
+              </div>
+
+              {/* Map Section */}
+              <div className="mt-6">
+                <h3 className="text-lg font-medium text-gray-900 mb-4">
+                  Location
+                </h3>
+                <div className="h-64 bg-gray-100 rounded-lg flex items-center justify-center">
+                  <div className="text-center">
+                    <p className="text-gray-600 mb-2">Map View</p>
+                    <p className="text-sm text-gray-500">
+                      Lat: {station.location.latitude}, Lng: {station.location.longitude}
+                    </p>
+                    <p className="text-xs text-gray-400 mt-2">
+                      Map integration can be added here
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="mt-8 flex space-x-3">
+                <button
+                  onClick={() => router.push('/dashboard')}
+                  className="bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded-md text-sm font-medium transition-colors"
+                >
+                  Back to Dashboard
+                </button>
+                <button
+                  onClick={() => window.open(`https://www.google.com/maps/search/?api=1&query=${station.location.latitude},${station.location.longitude}`, '_blank')}
+                  className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md text-sm font-medium transition-colors"
+                >
+                  Open in Google Maps
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </main>
+    </div>
   );
 }
