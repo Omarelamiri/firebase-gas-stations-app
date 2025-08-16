@@ -20,11 +20,7 @@ interface GasStation {
     longitude: number;
   };
   openHours: string;
-  prices: {
-    diesel?: number;
-    gasoline95?: number;
-    [key: string]: number | undefined;
-  };
+  prices: Record<string, number>; // Changed to match your hook's interface
   services: string[];
   updatedAt: any;
 }
@@ -92,6 +88,16 @@ export default function Dashboard() {
         const stations: GasStation[] = [];
         querySnapshot.forEach((doc) => {
           const data = doc.data();
+          // Filter out undefined values from prices
+          const cleanPrices: Record<string, number> = {};
+          if (data.prices && typeof data.prices === 'object') {
+            Object.entries(data.prices).forEach(([key, value]) => {
+              if (typeof value === 'number') {
+                cleanPrices[key] = value;
+              }
+            });
+          }
+
           stations.push({
             id: doc.id,
             name: data.name || 'Unknown Station',
@@ -102,7 +108,7 @@ export default function Dashboard() {
             hasShop: data.hasShop || false,
             location: data.location || { latitude: 0, longitude: 0 },
             openHours: data.openHours || '24/7',
-            prices: data.prices || {},
+            prices: cleanPrices, // Use cleaned prices without undefined values
             services: data.services || [],
             updatedAt: data.updatedAt
           });
@@ -153,8 +159,8 @@ export default function Dashboard() {
         },
         openHours: newStation.openHours,
         prices: {
-          diesel: parseFloat(newStation.dieselPrice) || 0,
-          gasoline95: parseFloat(newStation.gasoline95Price) || 0
+          ...(parseFloat(newStation.dieselPrice) > 0 && { diesel: parseFloat(newStation.dieselPrice) }),
+          ...(parseFloat(newStation.gasoline95Price) > 0 && { gasoline95: parseFloat(newStation.gasoline95Price) })
         },
         services: newStation.services,
         updatedAt: new Date(),
