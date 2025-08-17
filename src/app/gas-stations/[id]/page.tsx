@@ -5,6 +5,7 @@ import { useRouter, useParams } from 'next/navigation';
 import { doc, getDoc } from 'firebase/firestore';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { auth, db } from '@/lib/firebase'; // Adjust path as needed
+import GasStationMap from '@/components/GasStationMap';
 
 interface GasStation {
   id: string;
@@ -320,16 +321,11 @@ export default function GasStationDetailPage() {
                 <h3 className="text-lg font-medium text-gray-900 mb-4">
                   Location
                 </h3>
-                <div className="h-64 bg-gray-100 rounded-lg flex items-center justify-center">
-                  <div className="text-center">
-                    <p className="text-gray-600 mb-2">Map View</p>
-                    <p className="text-sm text-gray-500">
-                      Lat: {station.location.latitude}, Lng: {station.location.longitude}
-                    </p>
-                    <p className="text-xs text-gray-400 mt-2">
-                      Map integration can be added here
-                    </p>
-                  </div>
+                <div className="h-64 border rounded-lg overflow-hidden">
+                  <GasStationMap stations={[station]} />
+                </div>
+                <div className="mt-2 text-sm text-gray-600 text-center">
+                  <p>Latitude: {station.location.latitude}, Longitude: {station.location.longitude}</p>
                 </div>
               </div>
 

@@ -7,6 +7,7 @@ import { collection, query, orderBy, onSnapshot, addDoc, deleteDoc, doc, updateD
 import { auth, db } from '@/lib/firebase'; // Adjust path as needed
 import GasStationMap from '@/components/GasStationMap';
 
+
 interface GasStation {
   id: string;
   name: string;
