@@ -26,7 +26,7 @@ interface GasStation {
   updatedAt: any;
 }
 
-export default function Dashboard() {
+export default function Dashboard() { 
   const [loading, setLoading] = useState(true);
   const [user, setUser] = useState<User | null>(null);
   const [gasStations, setGasStations] = useState<GasStation[]>([]);
